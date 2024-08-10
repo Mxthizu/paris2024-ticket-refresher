@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Paris 2024 Ticket Refresher",
+  "version": "1.0.2",
+  "description": "Rafraîchit la page et ajoute des produits au panier automatiquement.",
+  "permissions": ["activeTab", "storage", "alarms", "notifications"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://ticket-resale.paris2024.org/tickets/all/1/1/*",
+        "https://ticket-resale.paris2024.org/json/offers/*",
+        "https://tickets.paris2024.org/checkout.html*"
+      ],
+      "js": ["content.js"]
+    }
+  ]
+}
