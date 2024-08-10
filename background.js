@@ -1,16 +1,44 @@
-const webhookURL =
-  "https://discord.com/api/webhooks/1270012955391430777/-fnYEubdvqU0V-5sSuX7PaKe3sTJqg11ymHxBQn3agYnQKHSqWTN517jI9oc9dxykjH2";
-
-function sendDiscordNotification(message) {
+function sendDiscordNotification(productDetails, webhookUrl) {
   console.log("Envoi d'une notification à Discord...");
-  fetch(webhookURL, {
+
+  // Message classique
+  const message = "Produit ajouté au panier";
+
+  // Embed avec les détails du produit, avec le titre redirigeant directement vers la page de checkout
+  const embed = {
+    title: productDetails.eventName, // Titre de l'événement
+    url: "https://tickets.paris2024.org/checkout.html", // URL vers laquelle le titre redirige
+    description:
+      `**Prix :** ${productDetails.price}\n\n` +
+      `**Date :** ${productDetails.date}\n\n` +
+      `**Lieu :** ${productDetails.venue}\n\n` +
+      `**Catégorie :** ${productDetails.category}\n\n` +
+      `**Siège :** ${productDetails.seatInfo}`,
+    color: 3066993, // Couleur de l'embed
+    thumbnail: {
+      url: productDetails.imageUrl,
+    },
+  };
+
+  const payload = {
+    content: message, // Message classique
+    embeds: [embed], // Embed avec le lien du panier dans le titre
+  };
+
+  fetch(webhookUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ content: message }),
+    body: JSON.stringify(payload),
   })
-    .then((response) => console.log("Notification envoyée avec succès"))
+    .then((response) => {
+      if (response.ok) {
+        console.log("Notification Discord envoyée avec succès");
+      } else {
+        console.error("Erreur lors de l'envoi de la notification Discord");
+      }
+    })
     .catch((error) =>
       console.error("Erreur lors de l'envoi de la notification:", error)
     );
@@ -19,6 +47,14 @@ function sendDiscordNotification(message) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "notify") {
     console.log("Notification reçue pour envoi à Discord");
-    sendDiscordNotification("Produit ajouté au panier sur Paris 2024 !");
+
+    chrome.storage.local.get("discordWebhookUrl", function (result) {
+      const webhookUrl = result.discordWebhookUrl;
+      if (webhookUrl) {
+        sendDiscordNotification(message.productDetails, webhookUrl);
+      } else {
+        console.error("Webhook Discord non configuré.");
+      }
+    });
   }
 });

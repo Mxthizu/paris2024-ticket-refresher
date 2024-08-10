@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Paris 2024 Ticket Refresher",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Rafraîchit la page et ajoute des produits au panier automatiquement.",
   "permissions": ["activeTab", "storage", "alarms", "notifications"],
   "background": {

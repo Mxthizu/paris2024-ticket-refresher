@@ -9,7 +9,9 @@
 - **Vérification automatique des offres** : L'extension recherche les offres disponibles toutes les 7 secondes.
 - **Ajout automatique au panier** : Si une offre est disponible, elle est automatiquement ajoutée au panier.
 - **Notification Discord** : Une notification est envoyée à votre serveur Discord une fois que les billets sont ajoutés au panier et que vous êtes redirigé vers la page de paiement.
-- **Arrêt automatique** : La vérification des offres s'arrête automatiquement lorsque vous atteignez la page de checkout.
+- **Gestion de la protection contre les robots** : Si une protection contre les robots est détectée, l'extension appuie automatiquement sur le bouton de rafraîchissement toutes les 5 secondes.
+- **Vérification de la protection après redirection** : La vérification de la protection contre les robots est effectuée après chaque redirection vers une page avec un paramètre `offerId`.
+- **Arrêt automatique** : La vérification des offres s'arrête automatiquement lorsque vous atteignez la page de paiement.
 
 ## Installation
 
@@ -39,12 +41,7 @@
    - Cliquez sur le bouton "Charger l'extension décompressée".
    - Sélectionnez le dossier du projet `paris2024-ticket-refresher` que vous venez de cloner ou d'extraire.
 
-4. **Configuration :**
-
-   - Ouvrez le fichier `content.js` dans un éditeur de texte.
-   - Remplacez la chaîne `YOUR_DISCORD_WEBHOOK_URL` par l'URL de votre webhook Discord.
-
-5. **Utilisation :**
+4. **Utilisation :**
 
    - L'extension démarrera automatiquement la vérification des offres une fois que vous accédez à la page de revente des billets.
    - Une notification sera envoyée à votre serveur Discord lorsque vous atteignez la page de paiement.

@@ -1,12 +1,53 @@
 let intervalId;
-let notificationSent = false; // Indicateur pour s'assurer que la notification n'est envoyée qu'une seule fois
+let notificationSent = false;
 let offersCheckIntervalId;
+let productInfo = ""; // Variable pour stocker les informations du produit
+let offersList = []; // Stocke les offres récupérées
+let currentOfferIndex = 0; // Garde la trace de l'offre actuelle
+const pageLoadDelay = 3000; // Délai pour laisser la page se charger complètement
+const botProtectionCheckInterval = 5000; // Intervalle pour appuyer sur le bouton de protection bot
+
+function checkForBotProtection() {
+  // Ne pas vérifier la protection bot sur la page de paiement
+  if (window.location.href.includes("checkout.html")) {
+    return false;
+  }
+
+  const botProtectionModal = document.querySelector(".js-BotProtectionModal");
+  if (botProtectionModal && !botProtectionModal.classList.contains("hidden")) {
+    console.log(
+      "Protection contre les robots détectée, appui automatique sur le bouton de rafraîchissement..."
+    );
+
+    // Trouver le bouton de rafraîchissement et cliquer dessus toutes les 5 secondes
+    const refreshButton = document.querySelector(
+      ".js-BotProtectionModalButtonTrigger"
+    );
+    if (refreshButton) {
+      setInterval(() => {
+        console.log("Appui sur le bouton de rafraîchissement...");
+        refreshButton.click();
+      }, botProtectionCheckInterval);
+    }
+    return true; // Indique que la protection bot a été détectée
+  }
+  return false;
+}
+
+// Appeler la vérification de protection contre les robots en tout premier
+if (checkForBotProtection()) {
+  console.log(
+    "Protection contre les robots en place, arrêt des autres actions."
+  );
+} else {
+  startCheckingOffers();
+}
 
 function getOfferApiUrl() {
   const currentUrl = window.location.href;
   const urlParts = currentUrl.split("/");
-  const offerIdPart = urlParts[urlParts.length - 1]; // Récupère la dernière partie de l'URL
-  const timestamp = Date.now(); // Obtient l'horodatage actuel
+  const offerIdPart = urlParts[urlParts.length - 1];
+  const timestamp = Date.now();
   return `https://ticket-resale.paris2024.org/json/offers/${offerIdPart}?_=${timestamp}`;
 }
 
@@ -45,10 +86,17 @@ function fetchOffers() {
     .then((data) => {
       if (data && data.offers && data.offers.length > 0) {
         console.log("Des offres sont disponibles.");
-        handleOffers(data.offers);
+        productInfo = data.offers[0].cleanedEventName; // Récupère le nom du produit
+        offersList = data.offers; // Stocke les offres récupérées
+        currentOfferIndex = 0; // Réinitialise l'index des offres
+
+        // Sauvegarder les offres et l'index actuel dans le stockage local
+        chrome.storage.local.set({ offersList, currentOfferIndex }, () => {
+          console.log("Offres sauvegardées dans le stockage local.");
+          handleOffers(); // Commence à traiter les offres
+        });
       } else {
         console.log("Aucune offre disponible.");
-        // Ne fait rien si aucune offre n'est disponible, attend simplement le prochain cycle de vérification
       }
     })
     .catch((error) => {
@@ -56,92 +104,124 @@ function fetchOffers() {
     });
 }
 
-function handleOffers(offers, index = 0) {
-  if (index >= offers.length) {
+function handleOffers() {
+  if (currentOfferIndex >= offersList.length) {
     console.log(
       "Toutes les offres ont été vérifiées, aucune n'est disponible."
     );
-    return; // Arrête la vérification si toutes les offres ont été vérifiées
+    return;
   }
 
-  const offer = offers[index];
-  const offerId = offer.id;
-  const currentAmount = offer.currentAmount;
-  if (offerId && currentAmount) {
-    console.log(
-      `Redirection vers la page avec offerId=${offerId} et ptc=${currentAmount}`
-    );
-    const newUrl = `${window.location.origin}${window.location.pathname}?offerId=${offerId}&ptc=${currentAmount}`;
-    window.location.href = newUrl;
+  const offer = offersList[currentOfferIndex];
+  if (offer) {
+    const offerId = offer.id;
+    const currentAmount = offer.currentAmount;
+    if (offerId && currentAmount) {
+      console.log(
+        `Modification de l'URL avec offerId=${offerId} et ptc=${currentAmount}`
+      );
+      const newUrl = `${window.location.origin}${window.location.pathname}?offerId=${offerId}&ptc=${currentAmount}`;
+      console.log(`Redirection vers : ${newUrl}`); // Log de l'URL modifiée
 
-    setTimeout(() => {
-      checkOfferAvailability(offers, index);
-    }, 2000); // Vérifie l'offre après 2 secondes
+      // Rediriger vers la nouvelle URL pour charger la page
+      window.location.href = newUrl;
+    }
+  } else {
+    console.error(
+      "Offre non définie pour l'index actuel. Passage à l'offre suivante."
+    );
+    currentOfferIndex++; // Incrémente l'index pour passer à l'offre suivante
+    handleOffers(); // Passe à l'offre suivante
   }
 }
 
-function checkOfferAvailability(offers, index) {
-  const errorMessage = document.querySelector(".p24-detailC-ErrorMessage"); // Assurez-vous que ce sélecteur correspond à l'élément de message d'erreur
+function checkAndClickPaymentButton() {
+  // Vérifier si un message d'erreur est présent
+  if (
+    currentOfferIndex >= offersList.length ||
+    !offersList[currentOfferIndex]
+  ) {
+    console.error("Offre non définie ou index invalide. Arrêt.");
+    return;
+  }
+
+  const offerId = offersList[currentOfferIndex].id;
+  const errorMessage = document.querySelector(
+    ".ErrorMessage.js-checkBarcodesForAutomatedReprintErrorMessage"
+  );
   if (
     errorMessage &&
     errorMessage.textContent.includes(
       "Cette offre n'est pas disponible pour le moment"
     )
   ) {
-    console.log(
-      `Offre ${index + 1} non disponible. Vérification de l'offre suivante.`
-    );
-    handleOffers(offers, index + 1);
-  } else {
-    console.log(`Offre ${index + 1} disponible. Tentative d'achat.`);
-    checkAndClickPaymentButton();
-  }
-}
+    console.log(`Offre ${offerId} non disponible, passage à l'offre suivante`);
+    currentOfferIndex++; // Incrémente l'index pour passer à l'offre suivante
 
-function checkAndClickPaymentButton() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const offerId = urlParams.get("offerId");
-  if (offerId) {
-    const paymentButton = document.querySelector("button.p24-detailC-Button");
-    if (paymentButton) {
-      console.log('Clique sur le bouton "Aller au paiement"');
-      paymentButton.click();
-    } else {
-      console.log(
-        'Bouton "Aller au paiement" non trouvé, réessayer dans 2 secondes'
-      );
-      setTimeout(checkAndClickPaymentButton, 2000);
-    }
-  }
-}
-
-function sendDiscordNotification() {
-  const webhookUrl =
-    "https://discord.com/api/webhooks/1270012955391430777/-fnYEubdvqU0V-5sSuX7PaKe3sTJqg11ymHxBQn3agYnQKHSqWTN517jI9oc9dxykjH2";
-  const payload = {
-    content: `Produit ajouté au panier. Lien de la page de paiement: ${window.location.href}`,
-  };
-
-  fetch(webhookUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  })
-    .then((response) => {
-      if (response.ok) {
-        console.log("Notification Discord envoyée avec succès");
-      } else {
-        console.error("Erreur lors de l'envoi de la notification Discord");
-      }
-    })
-    .catch((error) => {
-      console.error(
-        "Erreur lors de l'envoi de la notification Discord:",
-        error
-      );
+    // Sauvegarder l'index actuel dans le stockage local
+    chrome.storage.local.set({ currentOfferIndex }, () => {
+      console.log(`Index actuel sauvegardé : ${currentOfferIndex}`);
+      handleOffers(); // Passe à l'offre suivante
     });
+    return;
+  }
+
+  const paymentButton = document.querySelector("button.p24-detailC-Button");
+  if (paymentButton) {
+    console.log(
+      `Clique sur le bouton "Aller au paiement" pour l'offre ${offerId}`
+    );
+    paymentButton.click();
+    stopCheckingOffers(); // Arrêter de vérifier les offres si le bouton est trouvé et cliqué
+  } else {
+    console.log(
+      `Bouton "Aller au paiement" non trouvé ou non fonctionnel pour l'offre ${offerId}, passage à l'offre suivante`
+    );
+    currentOfferIndex++; // Incrémente l'index pour passer à l'offre suivante
+
+    // Sauvegarder l'index actuel dans le stockage local
+    chrome.storage.local.set({ currentOfferIndex }, () => {
+      console.log(`Index actuel sauvegardé : ${currentOfferIndex}`);
+      handleOffers(); // Passe à l'offre suivante
+    });
+  }
+}
+
+function extractProductDetails() {
+  const productDetails = {};
+
+  // Sélection des éléments dans le DOM
+  productDetails.eventName = document
+    .querySelector('[data-qa="event-title"]')
+    .textContent.trim();
+  productDetails.price = document
+    .querySelector('[data-qa="event-price"]')
+    .textContent.trim();
+  productDetails.date = document
+    .querySelector('[data-qa="event-date"]')
+    .textContent.trim();
+  productDetails.venue = document
+    .querySelector('[data-qa="venue-address"]')
+    .textContent.trim();
+  productDetails.category = document
+    .querySelector('[data-qa="price-category"]')
+    .textContent.trim();
+  productDetails.seatInfo = document
+    .querySelector('[data-qa="seat-information"]')
+    .textContent.trim();
+  productDetails.imageUrl = document.querySelector(".square-image img").src;
+
+  return productDetails;
+}
+
+function sendMessageToBackground(productDetails) {
+  const message = {
+    action: "notify",
+    productDetails: productDetails,
+  };
+  chrome.runtime.sendMessage(message, function (response) {
+    console.log("Message envoyé à background.js");
+  });
 }
 
 function checkIfOnCheckoutPage() {
@@ -152,26 +232,50 @@ function checkIfOnCheckoutPage() {
     !notificationSent
   ) {
     console.log("Sur la page de paiement");
-    sendDiscordNotification(); // Envoie la notification seulement sur la page de paiement
-    notificationSent = true; // Met à jour l'indicateur pour éviter les notifications en boucle
-    stopCheckingOffers(); // Arrête la vérification des offres
+
+    // Extraire les détails du produit et envoyer la notification
+    const productDetails = extractProductDetails();
+    sendMessageToBackground(productDetails);
+
+    notificationSent = true;
+    stopCheckingOffers();
+  } else if (window.location.href.includes("offerId")) {
+    console.log(
+      "Sur une page avec offerId, vérification du bouton de paiement..."
+    );
+
+    // Vérifier la protection contre les robots après redirection
+    if (!checkForBotProtection()) {
+      setTimeout(() => {
+        checkAndClickPaymentButton();
+      }, pageLoadDelay); // Délai pour laisser la page se charger complètement
+    }
   }
 }
 
 function startCheckingOffers() {
   console.log("Démarrage de la vérification des offres...");
 
-  // Vérifie régulièrement si nous sommes sur la page de checkout
+  // Charger les offres et l'index actuel à partir du stockage local
+  chrome.storage.local.get(["offersList", "currentOfferIndex"], (result) => {
+    if (result.offersList && result.currentOfferIndex !== undefined) {
+      offersList = result.offersList;
+      currentOfferIndex = result.currentOfferIndex;
+      console.log(
+        "Offres et index actuel restaurés à partir du stockage local."
+      );
+    }
+  });
+
   intervalId = setInterval(() => {
     checkIfOnCheckoutPage();
   }, 1000);
 
-  // Lancer la vérification des offres uniquement si on n'est pas sur la page de checkout
   if (!window.location.href.includes("checkout.html")) {
     offersCheckIntervalId = setInterval(() => {
       console.log("Vérification des offres via l'API...");
       fetchOffers();
-    }, 13000);
+    }, 7000);
   }
 }
 
@@ -193,6 +297,3 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 console.log("Script content.js chargé");
-
-// Lancer la vérification des offres et du bouton de paiement si nécessaire
-startCheckingOffers();
